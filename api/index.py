@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
-from mtcnn import MTCNN
-from keras_facenet import FaceNet
+from models.face_detector import detector
+from models.embedder import embedder
 import numpy as np
 from PIL import Image
 import firebase_admin
@@ -10,11 +10,6 @@ from scipy import spatial
 
 
 app = Flask(__name__)
-cred = credentials.Certificate('serviceAccountKey.json')
-firebase_admin.initialize_app(cred)
-db = firestore.client()
-detector = MTCNN()
-embedder = FaceNet()
 
 @app.route('/', methods=['GET'])
 def index():

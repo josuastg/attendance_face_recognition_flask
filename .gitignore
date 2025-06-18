@@ -3,6 +3,6 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.sqlite3
 *.h5
-embeddings/
-faces/
+.env
