@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 import firebase_admin
 from firebase_admin import credentials, firestore
-import os
+# import os
 from scipy import spatial
 
 
@@ -15,6 +15,10 @@ firebase_admin.initialize_app(cred)
 db = firestore.client()
 detector = MTCNN()
 embedder = FaceNet()
+
+@app.route('/', methods=['GET'])
+def index():
+    return jsonify({'message': 'API Flask di Vercel jalan'})
 
 # pastikan folder simpan tersedia
 # os.makedirs("faces", exist_ok=True)
@@ -184,4 +188,4 @@ def absen():
     }), 200
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    app.run(debug=True)
