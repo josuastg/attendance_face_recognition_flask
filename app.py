@@ -7,8 +7,8 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import os
 from scipy import spatial
-
-
+from datetime import datetime
+from math import radians, cos, sin, asin, sqrt
 app = Flask(__name__)
 cred = credentials.Certificate('serviceAccountKey.json')
 firebase_admin.initialize_app(cred)
@@ -52,7 +52,6 @@ def extract_face(file):
 
 @app.route('/register-face', methods=['POST'])
 def register_face():
-    from firebase_admin import firestore
     db = firestore.client()
 
     # Ambil user_id dari request (misalnya dikirim sebagai form-data)
@@ -97,8 +96,18 @@ def register_face():
         'message': 'Pendaftaran wajah berhasil', # contoh salah satu angka
     }), 200
 
+
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371000  # Radius bumi dalam meter
+    d_lat = radians(lat2 - lat1)
+    d_lon = radians(lon2 - lon1)
+    a = sin(d_lat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(d_lon / 2) ** 2
+    c = 2 * asin(sqrt(a))
+    return R * c
+
 @app.route('/absen', methods=['POST'])
 def absen():
+    
     # Ambil data dari request
     file = request.files.get('photo')
     user_id = request.form.get('user_id')
@@ -107,11 +116,47 @@ def absen():
     timestamp_time = request.form.get('time')
     longitude = request.form.get('longitude')
     latitude = request.form.get('latitude')
-    location_name = request.form.get('location_name')
 
     # Validasi input
-    if not all([file, user_id, absen_type, timestamp_date, timestamp_time, longitude, latitude, location_name]):
+    if not all([file, user_id, absen_type, timestamp_date, timestamp_time, longitude, latitude]):
         return jsonify({'success': False,'error': 'Semua data harus diisi'}), 400
+    
+    # Validasi lokasi
+    lokasi_ref = db.collection('lokasi_absen').limit(1).stream()
+    lokasi_doc = next(lokasi_ref, None)
+
+
+    if lokasi_doc is None:
+        return jsonify({'success': False, 'error': 'Lokasi kantor tidak ditemukan'}), 404
+
+    lokasi_data = lokasi_doc.to_dict()
+    user_lat = float(latitude)
+    user_lon = float(longitude)
+    kantor_lat = float(lokasi_data.get('latitude'))
+    kantor_long = float(lokasi_data.get('longitude'))
+
+    # Ambil properti marketing flexible
+    marketing_flexible = lokasi_data.get('marketing_flexible', False)
+
+    # Ambil data user
+    user_doc = db.collection('users').document(user_id).get()
+    if not user_doc.exists:
+        return jsonify({'success': False, 'error': 'User tidak ditemukan'}), 404
+    
+    user_data = user_doc.to_dict()
+    departemen = user_data.get('departement', '').lower()
+    
+    distance = haversine(user_lat, user_lon, kantor_lat, kantor_long)
+
+    # Validasi lokasi
+    lokasi_valid = False
+    if departemen == 'marketing':
+        lokasi_valid = marketing_flexible or distance <= 80
+    else:
+        lokasi_valid = distance <= 80
+
+    if not lokasi_valid:
+         return jsonify({'success': False, 'error': f'Lokasi absensi tidak sesuai ketentuan'}), 400
 
     # Ekstrak wajah dari gambar
     face_array = extract_face(file)
@@ -143,12 +188,13 @@ def absen():
 
     absensi_today = db.collection('absensi') \
     .where('user_id', '==', user_id) \
-    .where('time', '==', timestamp_date) \
+    .where('date', '==', timestamp_date) \
     .where('type', '==', absen_type) \
-    .get()
+    .stream()
 
+    # print(list(absensi_today));
     # validate agar absen masuk atau absen keluar tidak dua kali dalam sehari
-    if absensi_today:
+    if any(absensi_today):
         validate_absen_type = 'Absen masuk' if absen_type == 'absen_masuk' else 'Absen keluar'
         return jsonify({'success': False, 'error': f'User sudah melakukan {validate_absen_type.lower()} hari ini'}), 400
     
@@ -159,7 +205,6 @@ def absen():
         'time': timestamp_time,
         'longitude': float(longitude),
         'latitude': float(latitude),
-        'location_name': location_name,
         'type': absen_type,
         'similarity': similarity,
         'timestamp': firestore.SERVER_TIMESTAMP
