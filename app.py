@@ -89,7 +89,6 @@ def register_face():
     user_ref = db.collection('users').document(user_id)
     user_ref.set({
         'face_embedding': avg_embedding.tolist(),
-        'face_registered': True,
         'updated_at': firestore.SERVER_TIMESTAMP
     }, merge=True)
 
