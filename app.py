@@ -151,7 +151,7 @@ def absen():
     # validate agar absen masuk atau absen keluar tidak dua kali dalam sehari
     if absensi_today:
         validate_absen_type = 'Absen masuk' if absen_type == 'absen_masuk' else 'Absen keluar'
-        return jsonify({'success': False, 'error': f'User sudah melakukan {validate_absen_type.lower()} hari ini'}), 409
+        return jsonify({'success': False, 'error': f'User sudah melakukan {validate_absen_type.lower()} hari ini'}), 400
     
     # Simpan ke collection 'absensi'
     absen_data = {
