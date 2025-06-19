@@ -151,9 +151,9 @@ def absen():
     # Validasi lokasi
     lokasi_valid = False
     if departemen == 'marketing':
-        lokasi_valid = marketing_flexible or distance <= 80
+        lokasi_valid = marketing_flexible or distance <= lokasi_data.get('radius')
     else:
-        lokasi_valid = distance <= 80
+        lokasi_valid = distance <= lokasi_data.get('radius')
 
     if not lokasi_valid:
          return jsonify({'success': False, 'error': f'Lokasi absensi tidak sesuai ketentuan'}), 400
@@ -202,7 +202,7 @@ def absen():
     absen_data = {
         'user_id': user_id,
         'date': timestamp_date,
-        'time': timestamp_time,
+        'time': firestore.SERVER_TIMESTAMP,
         'longitude': float(longitude),
         'latitude': float(latitude),
         'type': absen_type,
