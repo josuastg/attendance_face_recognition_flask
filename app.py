@@ -239,7 +239,7 @@ def absen():
     # upload photo one by one 
     photo_url = ''
     try:
-        url = upload_to_cloudinary(face_array, user_id, "absen", absen_type)
+        url = upload_to_cloudinary(face_array, user_id, "absen", f"{absen_type}_{timestamp_date}")
         photo_url = url
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
