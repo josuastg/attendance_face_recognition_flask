@@ -7,12 +7,12 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import os
 from scipy import spatial
-from datetime import datetime
 from math import radians, cos, sin, asin, sqrt
-import requests
 from io import BytesIO
-import base64
 from dotenv import load_dotenv
+import cloudinary
+import cloudinary.uploader
+
 load_dotenv()  # Memuat file .env
 
 app = Flask(__name__)
@@ -22,8 +22,12 @@ db = firestore.client()
 detector = MTCNN()
 embedder = FaceNet()
 
-imgbb_api_key = os.getenv('IMGBB_API_KEY')  # Ganti dengan API key dari ImgBB
 
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET")
+)
 # pastikan folder simpan tersedia
 # os.makedirs("faces", exist_ok=True)
 # os.makedirs("embeddings", exist_ok=True)
@@ -56,27 +60,25 @@ def extract_face(file):
     face_image = Image.fromarray(face).resize((160, 160))
     return np.asarray(face_image)
 
-def upload_to_imgbb(image_array, api_key):
-    """Upload image (NumPy array) ke ImgBB, return URL."""
-    buffered = BytesIO()
-    img = Image.fromarray(image_array)
-    img.save(buffered, format="JPEG")
-    encoded_image = base64.b64encode(buffered.getvalue())
-    
-    response = requests.post(
-        "https://api.imgbb.com/1/upload",
-    data ={
-        "key": api_key,
-        "image": encoded_image,
-        "expiration": 604.800, ## 1 week in seconds
-        }
-    )
+def upload_to_cloudinary(image_array, user_id, folder_name = "", absen_type = "", index = None):
+    # Konversi numpy array ke file-like object (BytesIO)
+    from PIL import Image
+    import io
 
+    image = Image.fromarray(image_array)
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG")
+    buffer.seek(0)
 
-    if response.status_code == 200:
-        return response.json()['data']['url']
-    else:
-        raise Exception(f"Gagal upload ImgBB: {response.text}")
+    public_id = f"{user_id}_face{index + 1}" if folder_name  == "face_registration" else f"{user_id}_{absen_type}"
+    result = cloudinary.uploader.upload( 
+            buffer,
+            public_id= public_id,
+            overwrite=True,  # opsional: ganti file jika sudah ada dengan nama yang sama
+            folder=folder_name,  # opsional: simpan dalam folder "faces"
+            resource_type="image")
+    print(result)
+    return result["secure_url"]  # Link gambar
 
 @app.route('/register-face', methods=['POST'])
 def register_face():
@@ -106,12 +108,12 @@ def register_face():
 
     # upload photo one by one 
     photo_urls = []
-    try:
-        for face in photos:
-            url = upload_to_imgbb(face, imgbb_api_key)
+    for i, face in enumerate(photos):
+        try:
+            url = upload_to_cloudinary(face, user_id, "face_registration", "", i);
             photo_urls.append(url)
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        except Exception as e:
+            print("Gagal upload ke Cloudinary:", e)
 
     # Simpan crop wajah
     # for i, face in enumerate(photos):
@@ -237,7 +239,7 @@ def absen():
     # upload photo one by one 
     photo_url = ''
     try:
-        url = upload_to_imgbb(face_array, imgbb_api_key)
+        url = upload_to_cloudinary(face_array, user_id, "absen", absen_type)
         photo_url = url
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
