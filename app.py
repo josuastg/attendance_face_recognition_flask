@@ -12,6 +12,8 @@ from math import radians, cos, sin, asin, sqrt
 import requests
 from io import BytesIO
 import base64
+from dotenv import load_dotenv
+load_dotenv()  # Memuat file .env
 
 app = Flask(__name__)
 cred = credentials.Certificate('serviceAccountKey.json')
@@ -19,7 +21,8 @@ firebase_admin.initialize_app(cred)
 db = firestore.client()
 detector = MTCNN()
 embedder = FaceNet()
-imgbb_api_key = '69af5bbd9a24d4ffb663141c3c14a9c9'  # Ganti dengan API key dari ImgBB
+
+imgbb_api_key = os.getenv('IMGBB_API_KEY')  # Ganti dengan API key dari ImgBB
 
 # pastikan folder simpan tersedia
 # os.makedirs("faces", exist_ok=True)
