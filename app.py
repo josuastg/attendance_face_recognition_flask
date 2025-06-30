@@ -9,12 +9,17 @@ import os
 from scipy import spatial
 from datetime import datetime
 from math import radians, cos, sin, asin, sqrt
+import requests
+from io import BytesIO
+import base64
+
 app = Flask(__name__)
 cred = credentials.Certificate('serviceAccountKey.json')
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 detector = MTCNN()
 embedder = FaceNet()
+imgbb_api_key = '69af5bbd9a24d4ffb663141c3c14a9c9'  # Ganti dengan API key dari ImgBB
 
 # pastikan folder simpan tersedia
 # os.makedirs("faces", exist_ok=True)
@@ -48,7 +53,27 @@ def extract_face(file):
     face_image = Image.fromarray(face).resize((160, 160))
     return np.asarray(face_image)
 
+def upload_to_imgbb(image_array, api_key):
+    """Upload image (NumPy array) ke ImgBB, return URL."""
+    buffered = BytesIO()
+    img = Image.fromarray(image_array)
+    img.save(buffered, format="JPEG")
+    encoded_image = base64.b64encode(buffered.getvalue())
+    
+    response = requests.post(
+        "https://api.imgbb.com/1/upload",
+    data ={
+        "key": api_key,
+        "image": encoded_image,
+        "expiration": 604.800, ## 1 week in seconds
+        }
+    )
 
+
+    if response.status_code == 200:
+        return response.json()['data']['url']
+    else:
+        raise Exception(f"Gagal upload ImgBB: {response.text}")
 
 @app.route('/register-face', methods=['POST'])
 def register_face():
@@ -76,8 +101,14 @@ def register_face():
     embeddings = embedder.embeddings(photos)
     avg_embedding = np.mean(embeddings, axis=0)
 
-    # Simpan embedding ke file lokal (jika masih ingin disimpan lokal)
-    # np.save(f'embeddings/embedding_{len(os.listdir("embeddings"))}.npy', avg_embedding)
+    # upload photo one by one 
+    photo_urls = []
+    try:
+        for face in photos:
+            url = upload_to_imgbb(face, imgbb_api_key)
+            photo_urls.append(url)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
     # Simpan crop wajah
     # for i, face in enumerate(photos):
@@ -88,12 +119,14 @@ def register_face():
     user_ref = db.collection('users').document(user_id)
     user_ref.set({
         'face_embedding': avg_embedding.tolist(),
-        'updated_at': firestore.SERVER_TIMESTAMP
+        'updated_at': firestore.SERVER_TIMESTAMP,
+        'photo_url': photo_urls
     }, merge=True)
 
     return jsonify({
         'success': True,
         'message': 'Pendaftaran wajah berhasil', # contoh salah satu angka
+        'photo_url': photo_urls
     }), 200
 
 
@@ -197,7 +230,17 @@ def absen():
     if any(absensi_today):
         validate_absen_type = 'Absen masuk' if absen_type == 'absen_masuk' else 'Absen keluar'
         return jsonify({'success': False, 'error': f'User sudah melakukan {validate_absen_type.lower()} hari ini'}), 400
-    
+
+    # upload photo one by one 
+    photo_url = ''
+    try:
+        url = upload_to_imgbb(face_array, imgbb_api_key)
+        photo_url = url
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+    # img = Image.fromarray(face_array)
+    # img.save(f'faces/absen.jpg')
     # Simpan ke collection 'absensi'
     absen_data = {
         'user_id': user_id,
@@ -207,7 +250,8 @@ def absen():
         'latitude': float(latitude),
         'type': absen_type,
         'similarity': similarity,
-        'timestamp': firestore.SERVER_TIMESTAMP
+        'timestamp': firestore.SERVER_TIMESTAMP,
+        'photo_url': photo_url
     }
 
     absen_ref = db.collection('absensi').add(absen_data)[1]  # get doc ID
