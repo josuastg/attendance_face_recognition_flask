@@ -237,12 +237,12 @@ def absen():
         return jsonify({'success': False, 'error': f'User sudah melakukan {validate_absen_type.lower()} hari ini'}), 400
 
     # upload photo one by one 
-    photo_url = ''
-    try:
-        url = upload_to_cloudinary(face_array, user_id, "absen", f"{absen_type}_{timestamp_date}")
-        photo_url = url
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    # photo_url = ''
+    # try:
+    #     url = upload_to_cloudinary(face_array, user_id, "absen", f"{absen_type}_{timestamp_date}")
+    #     photo_url = url
+    # except Exception as e:
+    #     return jsonify({'success': False, 'error': str(e)}), 500
 
     # img = Image.fromarray(face_array)
     # img.save(f'faces/absen.jpg')
@@ -256,7 +256,7 @@ def absen():
         'type': absen_type,
         'similarity': similarity,
         'timestamp': firestore.SERVER_TIMESTAMP,
-        'photo_url': photo_url
+        # 'photo_url': photo_url
     }
 
     absen_ref = db.collection('absensi').add(absen_data)[1]  # get doc ID
