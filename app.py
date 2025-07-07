@@ -60,25 +60,6 @@ def extract_face(file):
     face_image = Image.fromarray(face).resize((160, 160))
     return np.asarray(face_image)
 
-def upload_to_cloudinary(image_array, user_id, folder_name = "", absen_type = "", index = None):
-    # Konversi numpy array ke file-like object (BytesIO)
-    from PIL import Image
-    import io
-
-    image = Image.fromarray(image_array)
-    buffer = io.BytesIO()
-    image.save(buffer, format="JPEG")
-    buffer.seek(0)
-
-    public_id = f"{user_id}_face{index + 1}" if folder_name  == "face_registration" else f"{user_id}_{absen_type}"
-    result = cloudinary.uploader.upload( 
-            buffer,
-            public_id= public_id,
-            overwrite=True,  # opsional: ganti file jika sudah ada dengan nama yang sama
-            folder=folder_name,  # opsional: simpan dalam folder "faces"
-            resource_type="image")
-    print(result)
-    return result["secure_url"]  # Link gambar
 
 @app.route('/register-face', methods=['POST'])
 def register_face():
@@ -182,6 +163,7 @@ def absen():
         return jsonify({'success': False, 'error': 'User tidak ditemukan'}), 404
     
     user_data = user_doc.to_dict()
+    print(f'user_data {user_data}')
     departemen = user_data.get('departement', '').lower()
     
     distance = haversine(user_lat, user_lon, kantor_lat, kantor_long)
@@ -256,6 +238,9 @@ def absen():
         'type': absen_type,
         'similarity': similarity,
         'timestamp': firestore.SERVER_TIMESTAMP,
+        'name': user_data.get('name'),
+        'nik': user_data.get('nik'),
+        'departement': user_data.get('departement')
         # 'photo_url': photo_url
     }
 
@@ -275,6 +260,26 @@ def absen():
         'absen_id': absen_id,
         'similarity': similarity
     }), 200
+
+def upload_to_cloudinary(image_array, user_id, folder_name = "", absen_type = "", index = None):
+    # Konversi numpy array ke file-like object (BytesIO)
+    from PIL import Image
+    import io
+
+    image = Image.fromarray(image_array)
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG")
+    buffer.seek(0)
+
+    public_id = f"{user_id}_face{index + 1}" if folder_name  == "face_registration" else f"{user_id}_{absen_type}"
+    result = cloudinary.uploader.upload( 
+            buffer,
+            public_id= public_id,
+            overwrite=True,  # opsional: ganti file jika sudah ada dengan nama yang sama
+            folder=folder_name,  # opsional: simpan dalam folder "faces"
+            resource_type="image")
+    print(result)
+    return result["secure_url"]  # Link gambar
 
 if __name__ == '__main__':
   app.run(host='0.0.0.0', port=5001, debug=True)
