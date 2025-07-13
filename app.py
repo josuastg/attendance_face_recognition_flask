@@ -4,7 +4,7 @@ from keras_facenet import FaceNet
 import numpy as np
 from PIL import Image
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, firestore, auth
 import os
 from scipy import spatial
 from math import radians, cos, sin, asin, sqrt
@@ -12,6 +12,8 @@ from io import BytesIO
 from dotenv import load_dotenv
 import cloudinary
 import cloudinary.uploader
+from openpyxl import Workbook
+import tempfile
 
 load_dotenv()  # Memuat file .env
 
@@ -85,6 +87,20 @@ def register_face():
 
     # Embedding + rata-rata
     embeddings = embedder.embeddings(photos)
+
+
+ # 💡 Cek kemiripan antar foto (semua pasangan: 0–1, 0–2, 1–2)
+    threshold = 0.7
+    pairs = [(0, 1), (0, 2), (1, 2)]
+    for i, j in pairs:
+        similarity = 1 - spatial.distance.cosine(embeddings[i], embeddings[j])
+        if similarity < threshold:
+            return jsonify({
+                'success': False,
+                'error': f'Foto {i+1} dan Foto {j+1} memiliki wajah berbeda'
+            }), 400
+    
+    # Jika semua wajah konsisten, lanjut simpan
     avg_embedding = np.mean(embeddings, axis=0)
 
     # upload photo one by one 
@@ -96,12 +112,6 @@ def register_face():
         except Exception as e:
             print("Gagal upload ke Cloudinary:", e)
 
-    # Simpan crop wajah
-    # for i, face in enumerate(photos):
-    #     img = Image.fromarray(face)
-    #     img.save(f'faces/face_{len(os.listdir("faces"))}_{i}.jpg')
-
-    # Update ke Firestore pada collection 'users'
     user_ref = db.collection('users').document(user_id)
     user_ref.set({
         'face_embedding': avg_embedding.tolist(),
@@ -219,12 +229,12 @@ def absen():
         return jsonify({'success': False, 'error': f'User sudah melakukan {validate_absen_type.lower()} hari ini'}), 400
 
     # upload photo one by one 
-    # photo_url = ''
-    # try:
-    #     url = upload_to_cloudinary(face_array, user_id, "absen", f"{absen_type}_{timestamp_date}")
-    #     photo_url = url
-    # except Exception as e:
-    #     return jsonify({'success': False, 'error': str(e)}), 500
+    photo_url = ''
+    try:
+        url = upload_to_cloudinary(face_array, user_id, "absen", f"{absen_type}_{timestamp_date}")
+        photo_url = url
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
     # img = Image.fromarray(face_array)
     # img.save(f'faces/absen.jpg')
@@ -240,8 +250,8 @@ def absen():
         'timestamp': firestore.SERVER_TIMESTAMP,
         'name': user_data.get('name'),
         'nik': user_data.get('nik'),
-        'departement': user_data.get('departement')
-        # 'photo_url': photo_url
+        'departement': user_data.get('departement'),
+        'photo_url': photo_url
     }
 
     absen_ref = db.collection('absensi').add(absen_data)[1]  # get doc ID
@@ -260,6 +270,82 @@ def absen():
         'absen_id': absen_id,
         'similarity': similarity
     }), 200
+
+@app.route('/bulk-create-users', methods=['POST'])
+def bulk_create_users():
+    db = firestore.client()
+    data = request.get_json()
+
+    admin_id = data.get('admin_id')
+    users = data.get('users')
+
+    # Validasi
+    if not admin_id or not isinstance(users, list):
+        return jsonify({'success': False, 'error': 'admin_id dan users[] wajib dikirim'}), 400
+
+    # (Opsional) Validasi admin ID apakah valid
+    admin_ref = db.collection('users').document(admin_id).get()
+    if not admin_ref.exists or admin_ref.to_dict().get('role') != 'admin':
+        return jsonify({'success': False, 'error': 'admin_id tidak valid atau bukan admin'}), 403
+
+    created = []
+    failed = []
+
+    for user in users:
+        email = user.get('email')
+        password = user.get('password')
+        name = user.get('name')
+        departemen = user.get('departemen', '')
+        nik = user.get('nik', '');
+
+        if not email or not password or not name:
+            failed.append({
+                'email': email or 'unknown',
+                'error': 'Field email, password, atau name kosong'
+            })
+            continue
+
+        try:
+            # Create auth user
+            user_record = auth.create_user(
+                email=email,
+                password=password,
+                display_name=name
+            )
+
+            # Simpan ke Firestore
+            db.collection('users').document(user_record.uid).set({
+                'email': email,
+                'name': name,
+                'departemen': departemen,
+                'nik': nik,
+                'created_by': admin_id,
+                'role': 'karyawan',
+                'created_at': firestore.SERVER_TIMESTAMP
+            })
+
+            created.append(email)
+
+        except Exception as e:
+            failed.append({
+                'name': name,
+                'email': email,
+                'error': str(e)
+            }) # simpan dict berisi name, email, error
+
+# Setelah proses
+    if failed:
+        excel_path = create_excel_from_failed(failed)
+        failed_excel_url = upload_to_cloudinary_excel(excel_path, folder="bulk_failed")
+    else:
+        failed_excel_url = None        
+
+    return jsonify({
+            'success': True,
+            'created_count': len(created),
+            'failed_count': len(failed),
+            'failed_download_url': failed_excel_url
+        }), 200    
 
 def upload_to_cloudinary(image_array, user_id, folder_name = "", absen_type = "", index = None):
     # Konversi numpy array ke file-like object (BytesIO)
@@ -280,6 +366,40 @@ def upload_to_cloudinary(image_array, user_id, folder_name = "", absen_type = ""
             resource_type="image")
     print(result)
     return result["secure_url"]  # Link gambar
+
+def upload_to_cloudinary_excel(file_path, folder="bulk_failed"):
+    try:
+        response = cloudinary.uploader.upload(
+            file_path,
+            resource_type="raw",  # penting: agar Excel bisa diunggah
+            folder=folder,
+            use_filename=True,
+            unique_filename=False,
+            overwrite=True,
+        )
+        return response['secure_url']
+    except Exception as e:
+        print(f"Gagal upload Excel ke Cloudinary: {e}")
+        return None
+
+def create_excel_from_failed(failed_users):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Failed Users"
+
+    # Header kolom
+    ws.append(['Name', 'Email', 'Error'])
+
+    # Isi data
+    for user in failed_users:
+        ws.append([user.get('name'), user.get('email'), user.get('error')])
+
+    # Simpan ke file sementara
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+    wb.save(temp_file.name)
+    temp_file.close()
+
+    return temp_file.name
 
 if __name__ == '__main__':
   app.run(host='0.0.0.0', port=5001, debug=True)
