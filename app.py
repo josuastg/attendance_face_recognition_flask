@@ -315,13 +315,16 @@ def bulk_create_users():
 
             # Simpan ke Firestore
             db.collection('users').document(user_record.uid).set({
+                'id': user_record.uid,
                 'email': email,
                 'name': name,
-                'departemen': departemen,
+                'departement': departemen,
                 'nik': nik,
                 'created_by': admin_id,
                 'role': 'karyawan',
-                'created_at': firestore.SERVER_TIMESTAMP
+                'created_at': firestore.SERVER_TIMESTAMP,
+                'photo_url': [],
+                'is_active': True
             })
 
             created.append(email)
