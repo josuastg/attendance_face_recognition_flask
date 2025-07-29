@@ -14,6 +14,8 @@ import cloudinary
 import cloudinary.uploader
 from openpyxl import Workbook
 import tempfile
+from datetime import datetime, timedelta
+import pytz
 
 load_dotenv()  # Memuat file .env
 
@@ -402,6 +404,51 @@ def create_excel_from_failed(failed_users):
     temp_file.close()
 
     return temp_file.name
+
+
+
+
+
+@app.route('/delete-users-full-by-email', methods=['POST'])
+def delete_users_full_by_email():
+    jakarta = pytz.timezone("Asia/Jakarta")
+    now = datetime.now(jakarta)
+    yesterday = now - timedelta(days=1)
+
+    users_ref = db.collection('users') \
+        .where('role', '==', 'karyawan') \
+        .where('created_at', '>=', yesterday)
+
+    docs = list(users_ref.stream())
+    if not docs:
+        return jsonify({'status': 'no users found'}), 200
+
+    deleted_count = 0
+    failed = []
+
+    for doc in docs:
+        data = doc.to_dict()
+        email = data.get("email")
+        try:
+            # Cari UID berdasarkan email
+            user_record = auth.get_user_by_email(email)
+            auth.delete_user(user_record.uid)
+        except Exception as e:
+            failed.append({'email': email, 'error': str(e)})
+
+        try:
+            # Hapus dari Firestore
+            doc.reference.delete()
+            deleted_count += 1
+        except Exception as e:
+            failed.append({'doc_id': doc.id, 'error': str(e)})
+
+    return jsonify({
+        'status': 'done',
+        'deleted': deleted_count,
+        'failed': failed
+    }), 200
+
 
 if __name__ == '__main__':
   app.run(host='0.0.0.0', port=5001, debug=True)
