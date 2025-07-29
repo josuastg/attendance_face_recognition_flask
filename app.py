@@ -323,8 +323,7 @@ def bulk_create_users():
                 'created_by': admin_id,
                 'role': 'karyawan',
                 'created_at': firestore.SERVER_TIMESTAMP,
-                'photo_url': [],
-                'is_active': True
+                'photo_url': []
             })
 
             created.append(email)
