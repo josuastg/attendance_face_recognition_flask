@@ -405,10 +405,6 @@ def create_excel_from_failed(failed_users):
 
     return temp_file.name
 
-
-
-
-
 @app.route('/delete-users-full-by-email', methods=['POST'])
 def delete_users_full_by_email():
     jakarta = pytz.timezone("Asia/Jakarta")
