@@ -27,6 +27,27 @@ Aplikasi ini menyediakan API untuk mendaftarkan wajah, melakukan absensi (masuk/
 
 ---
 
+## 🚀 Instalasi & Menjalankan
+1. **Clone Repository**
+- git clone https://github.com/josuastg/attendance_face_recognition_flask.git
+- cd attendance_face_recognition_flask
+2. **Buat Virtual Environment & Install Dependencies**
+- python -m venv venv
+- source venv/bin/activate  # MacOS/Linux
+- venv\Scripts\activate     # Windows
+- pip install -r requirements.txt
+
+3. **Siapkan File Konfigurasi** serviceAccountKey.json → kredensial Firebase dan.env → konfigurasi Cloudinary & variabel lain*
+- CLOUDINARY_CLOUD_NAME=your_cloud_name
+- CLOUDINARY_API_KEY=your_api_key
+- CLOUDINARY_API_SECRET=your_api_secret
+
+4. **Jalankan Aplikasi** (Firestore + Auth)
+- python app.py
+- Akses API di http://127.0.0.1:5000
+
+---
+
 ## 📂 Struktur Proyek
 ```bash
 attendance_face_recognition_flask/
